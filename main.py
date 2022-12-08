@@ -45,51 +45,6 @@ def get_train_and_valid(design_matrix, labels):
 
     return X_train, y_train, X_valid, y_valid
 
-class Model:
-    def __init__(self, scaled_clip_values):
-        self.svc_clf = SVC()
-        self.scaled_clip_values = scaled_clip_values
-
-    def train(self, X, y):
-        self.svc_clf.fit(X, y)
-        self.classif_svc = ScikitlearnSVC(
-            model = self.svc_clf,
-            clip_values = self.scaled_clip_values
-        )
-
-    def get_wrapped(self):
-        return self.classif_svc
-
-    def predict(self, x):
-        return self.classif_svc.predict(x)
-
-    def __call__(self, x):
-        return self.svc_clf.predict(x)
-
-class Attacker:
-    def __init__(self, classif_svc, X_train, y_train):
-        self.lpf_svc = LowProFool(
-        classifier = classif_svc,
-        n_steps    = 10,
-        lambd      = 1.75,
-        eta        = 5,
-        eta_decay  = 0.9,
-        verbose    = True
-        )
-        self.lpf_svc.fit_importances(X_train, y_train)
-
-    def get_classes(self):
-        return self.lpf_svc.n_classes
-
-    def __call__(self, X, y):
-        return self.lpf_svc.generate(x=X, y=y)
-
-
-# Import SVC
-from sklearn.svm import SVC
-
-# import ART wrapper for scikit-learn SVC
-from art.estimators.classification.scikitlearn import ScikitlearnSVC
 
 def get_cancer_dataset():
     cancer = datasets.load_breast_cancer()
@@ -104,33 +59,6 @@ def get_cancer_dataset():
 
     return X_train_cancer, y_train_cancer, X_valid_cancer, y_valid_cancer
 
-def test_1():
-    print("---------- Test 1 ----------")
-    X_train_cancer, y_train_cancer, X_valid_cancer, y_valid_cancer = get_cancer_dataset()
-    scaled_clip_values_cancer = (-1., 1.)
-
-    SVC = Model(scaled_clip_values_cancer)
-    SVC.train(X_train_cancer, y_train_cancer)
-
-    attacker = Attacker(SVC.get_wrapped(), X_train_cancer, y_train_cancer)
-
-    # Draw targets different from original labels and then save as one-hot encoded
-    n_classes = attacker.get_classes()
-    targets = np.eye(n_classes)[np.array(
-        y_valid_cancer.apply(lambda x: np.random.choice([i for i in range(n_classes) if i != x]))
-    )]
-
-    # Generate adversaries
-    adversaries = attacker(X=X_valid_cancer, y=targets)
-
-    # Check the success rate
-    expected = np.argmax(targets, axis=1)
-    predicted = np.argmax(SVC.predict(adversaries), axis=1)
-
-    correct = (expected == predicted)
-    success_rate = np.sum(correct) / correct.shape[0]
-    print("Test set size: {}".format(targets.shape[0]))
-    print("Success rate:  {:.2f}%".format(100*success_rate))
 
 def lowprofool_generate_adversaries_test_lr(lowprofool, classifier, x_valid, y_valid):
     """
@@ -157,64 +85,6 @@ def lowprofool_generate_adversaries_test_lr(lowprofool, classifier, x_valid, y_v
     return adversaries, success_rate
 
 
-def get_iris_dataset():
-    iris = datasets.load_iris()
-    design_matrix_iris = pd.DataFrame(data=iris['data'], columns=iris['feature_names'])
-    labels_iris = pd.Series(data=iris['target'])
-    # print(design_matrix_iris)
-
-    design_matrix_iris_scaled, iris_scaler = standardize(design_matrix_iris)
-
-    X_train_iris, y_train_iris, X_valid_iris, y_valid_iris =\
-        get_train_and_valid(design_matrix_iris_scaled, labels_iris)
-
-
-    return X_train_iris, y_train_iris, X_valid_iris, y_valid_iris
-
-def test_2():
-    print("---------- Test 2 ----------")
-    X_train_iris, y_train_iris, X_valid_iris, y_valid_iris = get_iris_dataset()
-
-    scaled_clip_values_iris = (
-        np.array(X_train_iris.min()),
-        np.array(X_train_iris.max())
-    )
-    # print("Clip-values:")
-    # print("  Lower bound:", scaled_clip_values_iris[0])
-    # print("  Upper bound:", scaled_clip_values_iris[1])
-
-    # print("\nClip-values in original scale:")
-    # clip_values_iris = iris_scaler.inverse_transform(scaled_clip_values_iris)
-    # print("  Lower bound:", clip_values_iris[0])
-    # print("  Upper bound:", clip_values_iris[1])
-
-    log_regression_clf_iris = LogisticRegression()
-    log_regression_clf_iris.fit(X_train_iris.values, y_train_iris)
-
-    # Wrapping classifier into appropriate ART-friendly wrapper
-    logistic_regression_iris_wrapper = ScikitlearnLogisticRegression(
-        model       = log_regression_clf_iris,
-        clip_values = scaled_clip_values_iris
-    )
-
-    # Creating LowProFool instance
-    lpf_logistic_regression_iris = LowProFool(
-        classifier = logistic_regression_iris_wrapper,
-        eta        = 5,
-        lambd      = 0.2,
-        eta_decay  = 0.9
-    )
-
-    # Fitting feature importance
-    lpf_logistic_regression_iris.fit_importances(X_train_iris, y_train_iris)
-
-    # Testing
-    results_lr_ir = lowprofool_generate_adversaries_test_lr(
-        lowprofool = lpf_logistic_regression_iris,
-        classifier = log_regression_clf_iris,
-        x_valid    = X_valid_iris,
-        y_valid    = y_valid_iris
-    )
 
 def test_3(
         n_steps=100,
@@ -326,50 +196,6 @@ def lowprofool_generate_adversaries_test_nn(lowprofool, classifier, x_valid, y_v
 
     return adversaries
 
-def test_4():
-    print("---------- Test 4 ----------")
-    X_train_iris, y_train_iris, X_valid_iris, y_valid_iris = get_iris_dataset()
-    scaled_clip_values_iris = (
-        np.array(X_train_iris.min()),
-        np.array(X_train_iris.max())
-    )
-
-    X = Variable(torch.FloatTensor(np.array(X_train_iris)))
-    y = Variable(torch.FloatTensor(np.eye(3)[y_train_iris]))
-    nn_model_iris = get_nn_model(4, 10, 3)
-    train_nn(nn_model_iris, X, y, 1e-4, 1000)
-
-    # Wrapping classifier into appropriate ART-friendly wrapper
-    # (in this case it is PyTorch NN classifier wrapper from ART)
-    neural_network_iris_wrapper = PyTorchClassifier(
-        model       = nn_model_iris, 
-        loss        = loss_fn,
-        input_shape = (4,),
-        nb_classes  = 3,
-        clip_values = scaled_clip_values_iris,
-        device_type = "cpu"
-    )
-
-    # Creating LowProFool instance
-    lpf_neural_network_iris = LowProFool(
-        classifier = neural_network_iris_wrapper,
-        n_steps    = 100,
-        eta        = 7,
-        lambd      = 1.75, 
-        eta_decay  = 0.95
-    )
-
-    # Fitting feature importance
-    lpf_neural_network_iris.fit_importances(X_train_iris, y_train_iris)
-
-    # Testing
-    results_nn_ir = lowprofool_generate_adversaries_test_nn(
-        lowprofool = lpf_neural_network_iris,
-        classifier = nn_model_iris, 
-        x_valid    = X_valid_iris, 
-        y_valid    = y_valid_iris
-    )
-
 def test_5():
     print("---------- Test 5 ----------")
 
@@ -433,13 +259,8 @@ def write_to_csv(csv_file, config, success_rate):
 
 def main(config):
     # There are multiple tests
-        # 1. SVM with cancer dataset
-        # 2. Logistic with iris dataset
         # 3. Logistic regression with cancer dataset
-        # 4. NN with iris dataset
         # 5. NN with cancer dataset
-    #test_1()
-    #test_2()
 
     success_rate = test_3(
         n_steps=config.n_steps,
@@ -452,7 +273,6 @@ def main(config):
     write_to_csv(config.csv_file, config, success_rate)
     print("Success rate: {:.2f}%".format(100*success_rate))
 
-    #test_4()
     #test_5()
 
 if __name__=="__main__":
