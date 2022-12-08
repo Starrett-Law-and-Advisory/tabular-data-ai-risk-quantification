@@ -8,7 +8,7 @@ import os
 
 warnings.filterwarnings(action='ignore')
 
-def plot_graph(config, data, x_label='n_steps', y_label='success_rate (param p in bernoulli)',
+def plot_graph(config, data, x_label='n_steps', y_label='success_rate (param p in Bernoulli)',
                output_dir='visualization', display=True):
 
     os.makedirs(output_dir, exist_ok=True)
@@ -20,7 +20,7 @@ def plot_graph(config, data, x_label='n_steps', y_label='success_rate (param p i
     plt.title(fig_title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
-    plt.ylim((0, 1.2))
+    plt.ylim((0, 1.1))
 
     plt.text(1, 1, f'\u03BC={mean:.2f}, \u03C3={std:.2f}')
     # plot data line 
@@ -28,7 +28,7 @@ def plot_graph(config, data, x_label='n_steps', y_label='success_rate (param p i
 
     # plot mean an std line
     plt.axhline(mean, color='r', linestyle='dashed')    
-    plt.axhline(std, color='b', linestyle='dashed')    
+
     plt.savefig(f'{output_dir}/{fig_title}.png')
     
     if display:
