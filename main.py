@@ -94,7 +94,7 @@ def test_3(
         n_train_samples=None,
         n_val_samples=None
     ):
-    print("---------- Test 3 ----------")
+    # print("---------- Test 3 ----------")
 
     X_train_cancer, y_train_cancer, X_valid_cancer, y_valid_cancer = get_cancer_dataset()
     scaled_clip_values_cancer = (-1., 1.)
