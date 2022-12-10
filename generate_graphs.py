@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np 
 import warnings 
 import os
+from matplotlib.ticker import PercentFormatter
+from tqdm import tqdm
 
 warnings.filterwarnings(action='ignore')
 
@@ -34,7 +36,7 @@ def plot_graph(config, data, x_label='n_steps', y_label='success_rate (param p i
     if display:
         plt.show()
 
-def plot_histogram(data, x_label='success_rate (param p in Bernoulli)', y_label='n_samples',
+def plot_histogram(data, x_label='success_rate (param p in Bernoulli)', y_label='Percentage samples',
                output_dir='visualization', fig_title='histogram', display=True):
 
 
@@ -44,9 +46,14 @@ def plot_histogram(data, x_label='success_rate (param p in Bernoulli)', y_label=
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     
+    weights=np.ones(len(data)) / len(data)
+    
     bins=[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     
-    plt.hist(data, bins=bins, edgecolor="black")    
+    plt.hist(data, bins=bins, weights=weights, edgecolor="black")
+    
+    plt.gca().yaxis.set_major_formatter(PercentFormatter(1))
+        
     plt.savefig(f'{output_dir}/{fig_title}.png')
     
     if display:
@@ -60,7 +67,7 @@ def generate_histogram(config):
     low_eta_decay, high_eta_decay = config.eta_decay_range
 
     success_rates = []
-    for i in range(config.n_samples):
+    for i in tqdm(range(config.n_samples)):
 
         eta = np.random.uniform(low_eta, high_eta, 1)[0]
         lmbda = np.random.uniform(low_lmbda, high_lmbda, 1)[0]
@@ -77,7 +84,7 @@ def generate_histogram(config):
         )
 
         write_to_csv(config.csv_file, config, success_rate)
-        print("Success rate: {:.2f}%".format(100*success_rate))
+        # print("Success rate: {:.2f}%".format(100*success_rate))
         success_rates.append(success_rate)
 
     plot_histogram(success_rates, display=config.display)
@@ -88,7 +95,8 @@ def generate_linechart(config):
 
     success_rates = []
     
-    for ns in range(config.n_steps_range[0], config.n_steps_range[1]+1):
+    for ns in tqdm(range(config.n_steps_range[0], config.n_steps_range[1]+1), desc='Test 3'):
+
         success_rate = test_3(
             n_steps=ns,
             eta=config.eta,
@@ -99,7 +107,7 @@ def generate_linechart(config):
         )
 
         write_to_csv(config.csv_file, config, success_rate)
-        print("Success rate: {:.2f}%".format(100*success_rate))
+        # print("Success rate: {:.2f}%".format(100*success_rate))
         success_rates.append(success_rate)
 
 
