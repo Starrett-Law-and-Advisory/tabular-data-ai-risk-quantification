@@ -103,7 +103,10 @@ def generate_linechart(config):
             lambd=config.lambd,
             eta_decay=config.eta_decay,
             n_train_samples=config.n_train_samples,
-            n_val_samples=config.n_val_samples
+            n_val_samples=config.n_val_samples,
+            dataset=config.dataset,
+            column_names=config.column_names,
+            target_column=config.target_column
         )
 
         write_to_csv(config.csv_file, config, success_rate)
@@ -137,6 +140,9 @@ if __name__=="__main__":
     parser.add_argument('-edr', '--eta_decay_range',  nargs=2, default=[0.5, 0.9], type=float)
     parser.add_argument('-ns', '--n_samples', default=100_000, type=int)
     parser.add_argument('-nd', '--no_display', action='store_false', dest='display', default=True)
+    parser.add_argument('-d', '--dataset', type=str)
+    parser.add_argument('-cn', '--column_names', nargs='+', default=None)
+    parser.add_argument('-tc', '--target_column', type=str)
 
     args = parser.parse_args()
 

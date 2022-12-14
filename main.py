@@ -142,7 +142,7 @@ def test_3(
         column_names=None,
         target_column=None,
     ):
-    print("---------- Test 3 ----------")
+    # print("---------- Test 3 ----------")
     if dataset:
         X_train, y_train, X_valid, y_valid = get_custom_dataset(dataset,
                                                                 target_column=target_column,
