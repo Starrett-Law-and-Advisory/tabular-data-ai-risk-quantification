@@ -11,6 +11,8 @@ import pandas as pd
 
 from sklearn import datasets
 from sklearn.preprocessing import StandardScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.linear_model import LogisticRegression
@@ -45,12 +47,55 @@ def get_train_and_valid(design_matrix, labels):
 
     return X_train, y_train, X_valid, y_valid
 
+def standerdize_custom_data(data):
+    std_feat = ['Amount', 'Time']
+    columns=data.columns
+    
+    std_pipeline = Pipeline([
+        ('std_scaler', StandardScaler())
+    ])
+    
+    full_pipeline = ColumnTransformer([
+        ('std_feat', std_pipeline, std_feat)
+        ], remainder='passthrough')
+    
+    x_scaled = full_pipeline.fit_transform(data)
+    return pd.DataFrame(data=x_scaled, columns=columns), None
+
+def get_custom_dataset(filename, target_column=None, column_names=None):
+    custom_dataset = pd.read_csv(filename)
+
+    if column_names:
+        custom_dataset = custom_dataset[column_names]
+
+    if target_column:
+        X = custom_dataset.drop(target_column, axis=1)
+        Y = custom_dataset[target_column]
+    else:
+        X = custom_dataset.iloc[:, :-1]
+        Y = custom_dataset.iloc[:, -1]
+    # print(X.describe())
+    
+    
+    X_scaled =X
+    
+    X_scaled, _scaler = standardize(X)
+    # print(X_scaled.describe())
+
+    # X_scaled, _scaler = standerdize_custom_data(X)
+    # print(X_scaled.describe())
+
+    # print(Y.value_counts())
+    X_train, y_train, X_valid, y_valid = \
+        get_train_and_valid(X_scaled, Y)
+
+    return X_train, y_train, X_valid, y_valid
+    
 
 def get_cancer_dataset():
     cancer = datasets.load_breast_cancer()
     design_matrix_cancer = pd.DataFrame(data=cancer['data'], columns=cancer['feature_names'])
     labels_cancer = pd.Series(data=cancer['target'])
-    # print(design_matrix_cancer)
 
     design_matrix_cancer_scaled, cancer_scaler = standardize(design_matrix_cancer)
 
@@ -92,26 +137,35 @@ def test_3(
         lambd=0.2,
         eta_decay=0.9,
         n_train_samples=None,
-        n_val_samples=None
+        n_val_samples=None,
+        dataset=None,
+        column_names=None,
+        target_column=None,
     ):
-    # print("---------- Test 3 ----------")
+    print("---------- Test 3 ----------")
+    if dataset:
+        X_train, y_train, X_valid, y_valid = get_custom_dataset(dataset,
+                                                                target_column=target_column,
+                                                                column_names=column_names)
+    else:
+        
+        X_train, y_train, X_valid, y_valid = get_cancer_dataset()
 
-    X_train_cancer, y_train_cancer, X_valid_cancer, y_valid_cancer = get_cancer_dataset()
     scaled_clip_values_cancer = (-1., 1.)
 
     # Take only some samples
     if n_train_samples is not None:
-        X_train_cancer = X_train_cancer[:n_train_samples]
-        y_train_cancer = y_train_cancer[:n_train_samples]
+        X_train = X_train[:n_train_samples]
+        y_train = y_train[:n_train_samples]
     if n_val_samples is not None:
-        X_valid_cancer = X_valid_cancer[:n_val_samples]
-        y_valid_cancer = y_valid_cancer[:n_val_samples]
+        X_valid = X_valid[:n_val_samples]
+        y_valid = y_valid[:n_val_samples]
 
     # SVC = Model(scaled_clip_values_cancer)
     # SVC.train(X_train_cancer, y_train_cancer)
 
     log_regression_clf_cancer = LogisticRegression()
-    log_regression_clf_cancer.fit(X_train_cancer.values, y_train_cancer)
+    log_regression_clf_cancer.fit(X_train.values, y_train)
 
     # Wrapping classifier into appropriate ART-friendly wrapper
     logistic_regression_cancer_wrapper = ScikitlearnLogisticRegression(
@@ -129,14 +183,14 @@ def test_3(
     )
 
     # Fitting feature importance
-    lpf_logistic_regression_cancer.fit_importances(X_train_cancer, y_train_cancer)
+    lpf_logistic_regression_cancer.fit_importances(X_train, y_train)
 
     # Testing
     results_lr_bc, success_rate = lowprofool_generate_adversaries_test_lr(
         lowprofool = lpf_logistic_regression_cancer,
         classifier = log_regression_clf_cancer,
-        x_valid    = X_valid_cancer,
-        y_valid    = y_valid_cancer
+        x_valid    = X_valid,
+        y_valid    = y_valid
     )
 
     return success_rate
@@ -268,7 +322,10 @@ def main(config):
         lambd=config.lambd,
         eta_decay=config.eta_decay,
         n_train_samples=config.n_train_samples,
-        n_val_samples=config.n_val_samples
+        n_val_samples=config.n_val_samples,
+        dataset=config.dataset,
+        column_names=config.column_names,
+        target_column=config.target_column
     )
     write_to_csv(config.csv_file, config, success_rate)
     print("Success rate: {:.2f}%".format(100*success_rate))
@@ -284,5 +341,8 @@ if __name__=="__main__":
     parser.add_argument('-e', '--eta', default=0.2, type=float)
     parser.add_argument('-l', '--lambd', default=0.2, type=float)
     parser.add_argument('-ed', '--eta_decay', default=0.9, type=float)
+    parser.add_argument('-d', '--dataset', type=str)
+    parser.add_argument('-cn', '--column_names', nargs='+', default=None)
+    parser.add_argument('-tc', '--target_column', type=str)
     args = parser.parse_args()
     main(args)
