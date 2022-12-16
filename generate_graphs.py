@@ -67,6 +67,13 @@ def generate_histogram(config):
     low_eta_decay, high_eta_decay = config.eta_decay_range
 
     success_rates = []
+
+    if config.dataset:
+        print(f'Loading custom dataset: {config.dataset}')
+    else:
+        print(f'Loading default dataset: Cancer')
+
+
     for i in tqdm(range(config.n_samples)):
 
         eta = np.random.uniform(low_eta, high_eta, 1)[0]
@@ -80,7 +87,11 @@ def generate_histogram(config):
             lambd=lmbda,
             eta_decay=eta_decay,
             n_train_samples=config.n_train_samples,
-            n_val_samples=config.n_val_samples
+            n_val_samples=config.n_val_samples,
+            dataset=config.dataset,
+            column_names=config.column_names,
+            target_column=config.target_column,
+            success_on_class=config.success_on_class
         )
 
         write_to_csv(config.csv_file, config, success_rate)
@@ -94,7 +105,11 @@ def generate_histogram(config):
 def generate_linechart(config):
 
     success_rates = []
-    
+    if config.dataset:
+        print(f'Loading custom dataset: {config.dataset}')
+    else:
+        print(f'Loading default dataset: Cancer')
+        
     for ns in tqdm(range(config.n_steps_range[0], config.n_steps_range[1]+1), desc='Test 3'):
 
         success_rate = test_3(
@@ -106,7 +121,8 @@ def generate_linechart(config):
             n_val_samples=config.n_val_samples,
             dataset=config.dataset,
             column_names=config.column_names,
-            target_column=config.target_column
+            target_column=config.target_column,
+            success_on_class=config.success_on_class
         )
 
         write_to_csv(config.csv_file, config, success_rate)
@@ -143,6 +159,7 @@ if __name__=="__main__":
     parser.add_argument('-d', '--dataset', type=str)
     parser.add_argument('-cn', '--column_names', nargs='+', default=None)
     parser.add_argument('-tc', '--target_column', type=str)
+    parser.add_argument('-soc', '--success_on_class', type=int)
 
     args = parser.parse_args()
 

@@ -17,11 +17,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.linear_model import LogisticRegression
 
+from sklearn.metrics import f1_score, recall_score, precision_score, accuracy_score, confusion_matrix 
 import torch
 import torch.nn as nn
 from torch import optim
 from torch.autograd import Variable
 
+import warnings 
+warnings.filterwarnings(action='ignore')
 
 def standardize(data):
     """
@@ -64,7 +67,8 @@ def standerdize_custom_data(data):
 
 def get_custom_dataset(filename, target_column=None, column_names=None):
     custom_dataset = pd.read_csv(filename)
-
+    custom_dataset = custom_dataset.sample(frac=1).reset_index(drop=True)
+    
     if column_names:
         custom_dataset = custom_dataset[column_names]
 
@@ -141,6 +145,7 @@ def test_3(
         dataset=None,
         column_names=None,
         target_column=None,
+        success_on_class=None,
     ):
     # print("---------- Test 3 ----------")
     if dataset:
@@ -166,6 +171,24 @@ def test_3(
 
     log_regression_clf_cancer = LogisticRegression()
     log_regression_clf_cancer.fit(X_train.values, y_train)
+
+    
+    # y_pred = log_regression_clf_cancer.predict(X_valid_0)
+    # print(f'Accuracy class: [0]: {accuracy_score(y_valid_0, y_pred):.4f}')
+
+    # y_pred = log_regression_clf_cancer.predict(X_valid_1)
+    # print(f'Accuracy class: [1]: {accuracy_score(y_valid_1, y_pred):.4f}')
+    # exit()
+    # print(f'F1-Score: {f1_score(y_valid, y_pred):.4f}')
+    # print(f'Confusion Matrix: {confusion_matrix(y_valid, y_pred)}')
+    # exit()    
+
+    if success_on_class:
+        X_valid = X_valid[y_valid == success_on_class].reset_index(drop=True)
+        y_valid = y_valid[y_valid == success_on_class].reset_index(drop=True)
+
+    # print(y_valid.value_counts())
+
 
     # Wrapping classifier into appropriate ART-friendly wrapper
     logistic_regression_cancer_wrapper = ScikitlearnLogisticRegression(
@@ -325,7 +348,8 @@ def main(config):
         n_val_samples=config.n_val_samples,
         dataset=config.dataset,
         column_names=config.column_names,
-        target_column=config.target_column
+        target_column=config.target_column,
+        success_on_class=config.success_on_class
     )
     write_to_csv(config.csv_file, config, success_rate)
     print("Success rate: {:.2f}%".format(100*success_rate))
@@ -344,5 +368,6 @@ if __name__=="__main__":
     parser.add_argument('-d', '--dataset', type=str)
     parser.add_argument('-cn', '--column_names', nargs='+', default=None)
     parser.add_argument('-tc', '--target_column', type=str)
+    parser.add_argument('-soc', '--success_on_class', type=int)
     args = parser.parse_args()
     main(args)
