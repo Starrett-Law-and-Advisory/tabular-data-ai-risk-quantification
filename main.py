@@ -23,6 +23,9 @@ import torch.nn as nn
 from torch import optim
 from torch.autograd import Variable
 
+
+from imblearn.over_sampling import SMOTE
+
 import warnings 
 warnings.filterwarnings(action='ignore')
 
@@ -65,7 +68,7 @@ def standerdize_custom_data(data):
     x_scaled = full_pipeline.fit_transform(data)
     return pd.DataFrame(data=x_scaled, columns=columns), None
 
-def get_custom_dataset(filename, target_column=None, column_names=None):
+def get_custom_dataset(filename, target_column=None, column_names=None, random_state=2):
     custom_dataset = pd.read_csv(filename)
     custom_dataset = custom_dataset.sample(frac=1).reset_index(drop=True)
     
@@ -93,6 +96,11 @@ def get_custom_dataset(filename, target_column=None, column_names=None):
     X_train, y_train, X_valid, y_valid = \
         get_train_and_valid(X_scaled, Y)
 
+    sm = SMOTE(random_state = random_state)
+
+    X_train, y_train = sm.fit_resample(X_train, y_train)
+    X_valid, y_valid = sm.fit_resample(X_valid, y_valid)
+    
     return X_train, y_train, X_valid, y_valid
     
 
