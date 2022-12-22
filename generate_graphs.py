@@ -98,7 +98,7 @@ def generate_histogram(config):
         # print("Success rate: {:.2f}%".format(100*success_rate))
         success_rates.append(success_rate)
 
-    plot_histogram(success_rates, display=config.display)
+    plot_histogram(success_rates, display=config.display, fig_title=f'fig-class-{config.success_on_class}')
     
 
 
