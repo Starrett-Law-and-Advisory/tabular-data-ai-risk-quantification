@@ -39,6 +39,7 @@ num_examples = 800167
 
 #### Model
 def nn_model_fn(features, labels, mode, params):
+
   """NN adapted from github.com/hexiangnan/neural_collaborative_filtering."""
   n_latent_factors_user = 10
   n_latent_factors_movie = 10
@@ -212,8 +213,8 @@ def main(args):
             print('For delta=1e-6, the current epsilon is: %.2f' % eps)
             print('For delta=1e-6, the current mu is: %.2f' % mu)
 
-        if mu > args['max_mu']:
-            break
+            if mu > args['max_mu']:
+                break
         else:
             print('Trained with vanilla non-private SGD optimizer')
 
