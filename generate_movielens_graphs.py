@@ -18,9 +18,9 @@ def plot_graph(config, data, x_label='epochs', y_label='test_accuracy',
     plt.title(fig_title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
-    plt.ylim((0, 1.1))
+    # plt.ylim((0, 1.1))
 
-    plt.text(1, 1, f'\u03BC={mean:.2f}, \u03C3={std:.2f}')
+    plt.text(1, int(mean), f'\u03BC={mean:.2f}, \u03C3={std:.2f}')
 
     # plot data line 
     plt.plot(np.arange(len(data)), data)
@@ -71,9 +71,9 @@ def generate_line_chart(config):
         'dpsgd': config.dpsgd
     })
 
-    plot_graph(rmse, display=config.display, y_label='rmse')
-    plot_graph(epsilons, display=config.display, y_label='eps')
-    plot_graph(mus, display=config.display, y_label='mu')
+    plot_graph(config.__dict__, rmse, display=config.display, y_label='rmse')
+    plot_graph(config.__dict__, epsilons, display=config.display, y_label='eps')
+    plot_graph(config.__dict__, mus, display=config.display, y_label='mu')
     
 
 def generate_histogram(config):
@@ -107,9 +107,9 @@ def generate_histogram(config):
         epsilons.append(outs[1][-1])
         mus.append(outs[2][-1])
 
-    plot_histogram(rmse, display=config.display, x_label='rmse')
-    plot_histogram(epsilons, display=config.display, x_label='eps')
-    plot_histogram(mus, display=config.display, x_label='mu')
+    plot_histogram(config, rmse, display=config.display, x_label='rmse')
+    plot_histogram(config, epsilons, display=config.display, x_label='eps')
+    plot_histogram(config, mus, display=config.display, x_label='mu')
  
 def main(args):
     # generate_histogram(args)
