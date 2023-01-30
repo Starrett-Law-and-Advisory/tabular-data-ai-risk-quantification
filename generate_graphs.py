@@ -7,11 +7,28 @@ import warnings
 import os
 from matplotlib.ticker import PercentFormatter
 from tqdm import tqdm
+from pyfair import FairModel, FairSimpleReport
 
 warnings.filterwarnings(action='ignore')
 
-def plot_graph(config, data, x_label='n_steps', y_label='success_rate (param p in Bernoulli)',
+def create_report(models_data, n_simulations=10_000):
+
+    models = []
+    for name, data in models_data.items():
+        model = FairModel(f"{name}", n_simulations=n_simulations)
+        model.input_data('Threat Event Frequency', mean=np.mean(data[1]), stdev=np.std(data[1]))
+        model.input_data('Vulnerability', mean=np.mean(data[0]), stdev=np.std(data[0]))
+        # model.input_data('Loss Magnitude', mean=np.mean(data[0]), stdev=np.std(data[0]))
+        model.input_data('Loss Magnitude', constant=1)
+        model.calculate_all()
+        models.append(model)
+
+    fsr = FairSimpleReport(models, currency_prefix='')
+    fsr.to_html('report.html')
+
+def plot_graph(config, data, n_steps_list, x_label='n_steps', y_label='success_rate (param p in Bernoulli)',
                output_dir='visualization', display=True):
+
 
     os.makedirs(output_dir, exist_ok=True)
     fig_title = f'nts: {config.n_train_samples}, nvs: {config.n_val_samples}, eta: {config.eta}, lambd: {config.lambd}, eta_decay: {config.eta_decay}'
@@ -35,6 +52,7 @@ def plot_graph(config, data, x_label='n_steps', y_label='success_rate (param p i
     
     if display:
         plt.show()
+
 
 def plot_histogram(data, x_label='success_rate (param p in Bernoulli)', y_label='Percentage samples',
                output_dir='visualization', fig_title='histogram', display=True):
@@ -101,19 +119,45 @@ def generate_histogram(config):
     plot_histogram(success_rates, display=config.display, fig_title=f'fig-class-{config.success_on_class}')
     
 
+def generate_pyfair_report(config):
 
-def generate_linechart(config):
+    low_eta, high_eta = config.eta_range
+    low_lmbda, high_lmbda = config.lmbda_range
+    low_eta_decay, high_eta_decay = config.eta_decay_range
+
+    n_models = config.num_models
+    model_data = {}
+
+    for _ in range(n_models):
+        eta = np.round(np.random.uniform(low_eta, high_eta, 1)[0], 3)
+        lmbda = np.round(np.random.uniform(low_lmbda, high_lmbda, 1)[0], 3)
+        eta_decay = np.round(np.random.uniform(low_eta_decay, high_eta_decay, 1)[0], 3)
+
+        config.eta = eta
+        config.lmbda = lmbda
+        config.eta_decay = eta_decay
+        success_scores, n_steps_list = generate_linechart(config, plot=False)
+        model_name = f"eta: {eta} lmbda: {lmbda}, eta_decay: {eta_decay}"
+        model_data[model_name] = (success_scores, n_steps_list)
+
+    create_report(model_data)
+
+def generate_linechart(config, plot=True):
 
     success_rates = []
     if config.dataset:
         print(f'Loading custom dataset: {config.dataset}')
     else:
         print(f'Loading default dataset: Cancer')
-        
-    for ns in tqdm(range(config.n_steps_range[0], config.n_steps_range[1]+1), desc='Test 3'):
 
+    if not plot:    
+        n_steps_list = np.random.randint(config.n_steps_range[0], config.n_steps_range[1]+1, 100, np.uint8).tolist()
+    else:
+        n_steps_list = range(config.n_steps_range[0], config.n_steps_range[1]+1) 
+    
+    for n_step in tqdm(n_steps_list, desc='Test 3'):
         success_rate = test_3(
-            n_steps=ns,
+            n_steps=n_step,
             eta=config.eta,
             lambd=config.lambd,
             eta_decay=config.eta_decay,
@@ -129,14 +173,19 @@ def generate_linechart(config):
         # print("Success rate: {:.2f}%".format(100*success_rate))
         success_rates.append(success_rate)
 
-
-    plot_graph(config, success_rates, display=config.display)
+    if plot:
+        plot_graph(config, success_rates, n_steps_list, display=config.display)
     
+    return success_rates, n_steps_list    
 
 def generate_graph(config):
-
-    # generate_linechart(config)    
-    generate_histogram(config)
+    
+    if config.mode == 'pyfair':
+        generate_pyfair_report(config)
+    elif config.mode == 'line':
+        generate_linechart(config)    
+    elif config.mode == 'hist':
+        generate_histogram(config)
     
     
 
@@ -144,6 +193,7 @@ def generate_graph(config):
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument('mode', help = 'Choose hist, line or pyfair')
     parser.add_argument('-cf', '--csv-file', default='results.csv')
     parser.add_argument('-nts', '--n_train_samples', type=int)
     parser.add_argument('-nvs', '--n_val_samples', type=int)
@@ -160,6 +210,7 @@ if __name__=="__main__":
     parser.add_argument('-cn', '--column_names', nargs='+', default=None)
     parser.add_argument('-tc', '--target_column', type=str)
     parser.add_argument('-soc', '--success_on_class', type=int)
+    parser.add_argument('-nm', '--num_models', default=1, type=int)
 
     args = parser.parse_args()
 
