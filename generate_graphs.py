@@ -1,5 +1,5 @@
 import argparse
-from main import test_3, write_to_csv
+from main import create_model_and_attack, write_to_csv
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np 
@@ -9,10 +9,7 @@ from matplotlib.ticker import PercentFormatter
 from tqdm import tqdm
 from pyfair import FairModel, FairSimpleReport
 
-warnings.filterwarnings(action='ignore')
-
 def create_report(models_data, n_simulations=10_000):
-
     models = []
     for name, data in models_data.items():
         model = FairModel(f"{name}", n_simulations=n_simulations)
@@ -32,9 +29,9 @@ def plot_graph(config, data, n_steps_list, x_label='n_steps', y_label='success_r
 
     os.makedirs(output_dir, exist_ok=True)
     fig_title = f'nts: {config.n_train_samples}, nvs: {config.n_val_samples}, eta: {config.eta}, lambd: {config.lambd}, eta_decay: {config.eta_decay}'
-    mean = np.mean(data)    
+    mean = np.mean(data)
     std = np.std(data)
-    
+
 
     plt.title(fig_title)
     plt.xlabel(x_label)
@@ -46,10 +43,10 @@ def plot_graph(config, data, n_steps_list, x_label='n_steps', y_label='success_r
     plt.plot(np.arange(config.n_steps_range[0], config.n_steps_range[1]+1), data)
 
     # plot mean an std line
-    plt.axhline(mean, color='r', linestyle='dashed')    
+    plt.axhline(mean, color='r', linestyle='dashed')
 
     plt.savefig(f'{output_dir}/{fig_title}.png')
-    
+
     if display:
         plt.show()
 
@@ -63,20 +60,20 @@ def plot_histogram(data, x_label='success_rate (param p in Bernoulli)', y_label=
     plt.title(fig_title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
-    
+
     weights=np.ones(len(data)) / len(data)
-    
+
     bins=[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-    
+
     plt.hist(data, bins=bins, weights=weights, edgecolor="black")
-    
+
     plt.gca().yaxis.set_major_formatter(PercentFormatter(1))
-        
+
     plt.savefig(f'{output_dir}/{fig_title}.png')
-    
+
     if display:
         plt.show()
-    
+
 def generate_histogram(config):
 
     low_n_steps, high_n_steps = config.n_steps_range
@@ -99,7 +96,7 @@ def generate_histogram(config):
         eta_decay = np.random.uniform(low_eta_decay, high_eta_decay, 1)[0]
         n_steps = np.random.randint(low_n_steps, high_n_steps, 1, int)[0]
 
-        success_rate = test_3(
+        success_rate = create_model_and_attack(
             n_steps=int(n_steps),
             eta=eta,
             lambd=lmbda,
@@ -117,7 +114,7 @@ def generate_histogram(config):
         success_rates.append(success_rate)
 
     plot_histogram(success_rates, display=config.display, fig_title=f'fig-class-{config.success_on_class}')
-    
+
 
 def generate_pyfair_report(config):
 
@@ -150,13 +147,13 @@ def generate_linechart(config, plot=True):
     else:
         print(f'Loading default dataset: Cancer')
 
-    if not plot:    
+    if not plot:
         n_steps_list = np.random.randint(config.n_steps_range[0], config.n_steps_range[1]+1, 100, np.uint8).tolist()
     else:
         n_steps_list = range(config.n_steps_range[0], config.n_steps_range[1]+1) 
-    
-    for n_step in tqdm(n_steps_list, desc='Test 3'):
-        success_rate = test_3(
+
+    for n_step in tqdm(n_steps_list):
+        success_rate = create_model_and_attack(
             n_steps=n_step,
             eta=config.eta,
             lambd=config.lambd,
@@ -175,20 +172,17 @@ def generate_linechart(config, plot=True):
 
     if plot:
         plot_graph(config, success_rates, n_steps_list, display=config.display)
-    
-    return success_rates, n_steps_list    
+
+    return success_rates, n_steps_list
 
 def generate_graph(config):
-    
+
     if config.mode == 'pyfair':
         generate_pyfair_report(config)
     elif config.mode == 'line':
-        generate_linechart(config)    
+        generate_linechart(config)
     elif config.mode == 'hist':
         generate_histogram(config)
-    
-    
-
 
 
 if __name__=="__main__":
@@ -211,7 +205,5 @@ if __name__=="__main__":
     parser.add_argument('-tc', '--target_column', type=str)
     parser.add_argument('-soc', '--success_on_class', type=int)
     parser.add_argument('-nm', '--num_models', default=1, type=int)
-
     args = parser.parse_args()
-
     generate_graph(args)

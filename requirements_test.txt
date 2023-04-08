@@ -62,5 +62,9 @@ requests~=2.28.1
 # ART
 -e .
 
+# extras
+imblearn
+pyfair
+
 # NOTE to contributors: When changing/adding packages, please make sure that the packages are consistent with those
 # present within the Dockerfile

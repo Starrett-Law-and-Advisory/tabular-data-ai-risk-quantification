@@ -3,7 +3,6 @@ import csv
 import os
 
 from art.estimators.classification.scikitlearn import ScikitlearnLogisticRegression
-from art.estimators.classification.pytorch import PyTorchClassifier
 from art.attacks.evasion import LowProFool
 
 import numpy as np
@@ -11,23 +10,63 @@ import pandas as pd
 
 from sklearn import datasets
 from sklearn.preprocessing import StandardScaler
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.linear_model import LogisticRegression
 
-from sklearn.metrics import f1_score, recall_score, precision_score, accuracy_score, confusion_matrix 
-import torch
-import torch.nn as nn
-from torch import optim
-from torch.autograd import Variable
-
-
 from imblearn.over_sampling import SMOTE
 
-import warnings 
+import warnings
 warnings.filterwarnings(action='ignore')
+
+# =====================================================================
+# Data utilities
+# =====================================================================
+
+def get_custom_dataset(
+        filename,
+        target_column=None,
+        column_names=None,
+        random_state=2
+    ):
+    custom_dataset = pd.read_csv(filename)
+    custom_dataset = custom_dataset.sample(frac=1).reset_index(drop=True)
+    if column_names:
+        custom_dataset = custom_dataset[column_names]
+
+    if target_column:
+        X = custom_dataset.drop(target_column, axis=1)
+        Y = custom_dataset[target_column]
+    else:
+        X = custom_dataset.iloc[:, :-1]
+        Y = custom_dataset.iloc[:, -1]
+    X_scaled =X
+    X_scaled, _scaler = standardize(X)
+
+    X_train, y_train, X_valid, y_valid = \
+        get_train_and_valid(X_scaled, Y)
+
+    sm = SMOTE(random_state = random_state)
+
+    X_train, y_train = sm.fit_resample(X_train, y_train)
+    X_valid, y_valid = sm.fit_resample(X_valid, y_valid)
+    return X_train, y_train, X_valid, y_valid
+
+def get_cancer_dataset():
+    cancer = datasets.load_breast_cancer()
+    design_matrix_cancer = pd.DataFrame(
+            data=cancer['data'],
+            columns=cancer['feature_names']
+    )
+    labels_cancer = pd.Series(data=cancer['target'])
+
+    design_matrix_cancer_scaled, cancer_scaler = standardize(
+            design_matrix_cancer
+    )
+
+    data = get_train_and_valid(design_matrix_cancer_scaled,
+                               labels_cancer)
+
+    return data
 
 def standardize(data):
     """
@@ -39,12 +78,11 @@ def standardize(data):
 
     return pd.DataFrame(data=x_scaled, columns=columns), scaler
 
-split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=0)
-
 def get_train_and_valid(design_matrix, labels):
     """
     Split dataset into training and validation sets.
     """
+    split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=0)
     for train_idx, valid_idx in split.split(design_matrix, labels):
         X_train = design_matrix.iloc[train_idx].copy()
         X_valid = design_matrix.iloc[valid_idx].copy()
@@ -53,81 +91,200 @@ def get_train_and_valid(design_matrix, labels):
 
     return X_train, y_train, X_valid, y_valid
 
-def standerdize_custom_data(data):
-    std_feat = ['Amount', 'Time']
-    columns=data.columns
-    
-    std_pipeline = Pipeline([
-        ('std_scaler', StandardScaler())
-    ])
-    
-    full_pipeline = ColumnTransformer([
-        ('std_feat', std_pipeline, std_feat)
-        ], remainder='passthrough')
-    
-    x_scaled = full_pipeline.fit_transform(data)
-    return pd.DataFrame(data=x_scaled, columns=columns), None
+# =====================================================================
+# Helper utilities
+# =====================================================================
 
-def get_custom_dataset(filename, target_column=None, column_names=None, random_state=2):
-    custom_dataset = pd.read_csv(filename)
-    custom_dataset = custom_dataset.sample(frac=1).reset_index(drop=True)
-    
-    if column_names:
-        custom_dataset = custom_dataset[column_names]
-
-    if target_column:
-        X = custom_dataset.drop(target_column, axis=1)
-        Y = custom_dataset[target_column]
+def write_to_csv(csv_file, config, success_rate):
+    config_dict = vars(config)
+    headers = sorted(config_dict.keys())
+    if os.path.isfile(csv_file):
+        with open(csv_file, 'r') as f:
+            reader = csv.reader(f)
+            write_headers = (sum([1 for _ in reader]) == 0)
     else:
-        X = custom_dataset.iloc[:, :-1]
-        Y = custom_dataset.iloc[:, -1]
-    # print(X.describe())
-    
-    
-    X_scaled =X
-    
-    X_scaled, _scaler = standardize(X)
-    # print(X_scaled.describe())
+        write_headers = True
 
-    # X_scaled, _scaler = standerdize_custom_data(X)
-    # print(X_scaled.describe())
+    with open(csv_file, 'a') as f:
+        writer = csv.writer(f)
+        if write_headers:
+            writer.writerow(headers+['success_rate'])
+        writer.writerow([config_dict[header] for header in headers]
+                        + [success_rate])
 
-    # print(Y.value_counts())
-    X_train, y_train, X_valid, y_valid = \
-        get_train_and_valid(X_scaled, Y)
+# =====================================================================
+# Reports
+# =====================================================================
 
-    sm = SMOTE(random_state = random_state)
+def generate_pyfair_report(
+        eta_range,
+        lambd_range,
+        eta_decay_range,
+        dataset,
+        n_steps_range,
+        eta,
+        lambd,
+        eta_decay,
+        n_train_samples,
+        n_val_samples,
+        column_names,
+        target_column,
+        success_on_class,
+        save_csv_file,
+        display
+    ):
+    n_models = config.num_models
+    model_data = {}
 
-    X_train, y_train = sm.fit_resample(X_train, y_train)
-    X_valid, y_valid = sm.fit_resample(X_valid, y_valid)
-    
-    return X_train, y_train, X_valid, y_valid
-    
+    sample_fn = lambda r: np.round(np.random.uniform(r[0], r[1], 1)[0], 3)
+    for _ in range(n_models):
+        eta = sample_fn(eta_range)
+        lambd = sample_fn(lambd_range)
+        eta_decay = sample_fn(eta_decay_range)
 
-def get_cancer_dataset():
-    cancer = datasets.load_breast_cancer()
-    design_matrix_cancer = pd.DataFrame(data=cancer['data'], columns=cancer['feature_names'])
-    labels_cancer = pd.Series(data=cancer['target'])
+        success_scores, n_steps_list = generate_linechart(dataset,
+                                                          n_steps_range,
+                                                          eta,
+                                                          lambd,
+                                                          eta_decay,
+                                                          n_train_samples,
+                                                          n_val_samples,
+                                                          column_names,
+                                                          target_column,
+                                                          success_on_class,
+                                                          save_csv_file,
+                                                          display,
+                                                          plot=False)
+        model_name = f"eta: {eta} lambd: {lambd}, eta_decay: {eta_decay}"
+        model_data[model_name] = (success_scores, n_steps_list)
 
-    design_matrix_cancer_scaled, cancer_scaler = standardize(design_matrix_cancer)
+    _generate_pyfair_report(model_data)
 
-    X_train_cancer, y_train_cancer, X_valid_cancer, y_valid_cancer =\
-        get_train_and_valid(design_matrix_cancer_scaled, labels_cancer)
+def _generate_pyfair_report(models_data, n_simulations=10_000):
+    models = []
+    for name, data in models_data.items():
+        model = FairModel(f"{name}", n_simulations=n_simulations)
+        model.input_data('Threat Event Frequency',
+                         mean=np.mean(data[1]),
+                         stdev=np.std(data[1]))
+        model.input_data('Vulnerability',
+                         mean=np.mean(data[0]),
+                         stdev=np.std(data[0]))
+        model.input_data('Loss Magnitude', constant=1)
+        model.calculate_all()
+        models.append(model)
 
-    return X_train_cancer, y_train_cancer, X_valid_cancer, y_valid_cancer
+    fsr = FairSimpleReport(models, currency_prefix='')
+    fsr.to_html('report.html')
 
+def plot_line_chart(
+        dataset,
+        n_steps_range,
+        eta,
+        lambd,
+        eta_decay,
+        n_train_samples,
+        n_val_samples,
+        column_names,
+        target_column,
+        success_on_class,
+        save_csv_file,
+        display,
+        plot=True
+    ):
 
-def lowprofool_generate_adversaries_test_lr(lowprofool, classifier, x_valid, y_valid):
+    success_rates = []
+    if plot:
+        n_steps_list = range(n_steps_range[0], n_steps_range[1]+1)
+    else:
+        n_steps_list = np.random.randint(n_steps_range[0],
+                                         n_steps_range[1]+1,
+                                         100,
+                                         np.uint8)
+        n_steps_list = np_steps_list.tolist()
+
+    for n_step in tqdm(n_steps_list):
+        success_rate = create_model_and_attack(
+            n_steps=n_step,
+            eta=eta,
+            lambd=lambd,
+            eta_decay=eta_decay,
+            n_train_samples=n_train_samples,
+            n_val_samples=n_val_samples,
+            dataset=dataset,
+            column_names=column_names,
+            target_column=target_column,
+            success_on_class=success_on_class
+        )
+
+        write_to_csv(csv_file, config, success_rate)
+        success_rates.append(success_rate)
+
+    if plot:
+        plot_graph(n_train_samples,
+                   n_val_samples,
+                   eta,
+                   lambd,
+                   eta_decay,
+                   success_rates,
+                   n_steps_range,
+                   display=display)
+
+    return success_rates, n_steps_list
+
+def plot_graph(
+        n_train_samples,
+        n_val_samples,
+        eta,
+        lambd,
+        eta_decay,
+        data,
+        n_steps_range,
+        x_label='n_steps',
+        y_label='success_rate (param p in Bernoulli)',
+        output_dir='visualization',
+        display=True
+    ):
+
+    os.makedirs(output_dir, exist_ok=True)
+    fig_title = (f'nts: {n_train_samples}, '
+                 + f'nvs: {n_val_samples}, '
+                 + f'eta: {eta}, '
+                 + f'lambd: {lambd}, '
+                 + f'eta_decay: {eta_decay}')
+    mean = np.mean(data)
+    std = np.std(data)
+
+    # Plot
+    plt.title(fig_title)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.ylim((0, 1.1))
+    plt.text(1, 1, f'\u03BC={mean:.2f}, \u03C3={std:.2f}')
+    plt.plot(np.arange(n_steps_range[0], n_steps_range[1]+1), data)
+    plt.axhline(mean, color='r', linestyle='dashed')
+    plt.savefig(f'{output_dir}/{fig_title}.png')
+    if display:
+        plt.show()
+
+# =====================================================================
+# LowProFool Attack
+# =====================================================================
+
+def lowprofool_generate_adversaries_test_lr(
+        lowprofool,
+        classifier,
+        x_valid,
+        y_valid
+    ):
     """
     Testing utility.
     """
     n_classes = lowprofool.n_classes
 
     # Generate targets
-    target = np.eye(n_classes)[np.array(
-        y_valid.apply(
-            lambda x: np.random.choice([i for i in range(n_classes) if i != x]))
-    )]
+    idxs = lambda x: np.random.choice([i for i in range(n_classes) if i != x])
+    target = np.eye(n_classes)[np.array(y_valid.apply(idxs))]
 
     # Generate adversaries
     adversaries = lowprofool.generate(x=x_valid, y=target)
@@ -141,9 +298,11 @@ def lowprofool_generate_adversaries_test_lr(lowprofool, classifier, x_valid, y_v
 
     return adversaries, success_rate
 
+# =====================================================================
+# Main
+# =====================================================================
 
-
-def test_3(
+def create_model_and_attack(
         n_steps=100,
         eta=0.2,
         lambd=0.2,
@@ -155,13 +314,13 @@ def test_3(
         target_column=None,
         success_on_class=None,
     ):
-    # print("---------- Test 3 ----------")
     if dataset:
-        X_train, y_train, X_valid, y_valid = get_custom_dataset(dataset,
-                                                                target_column=target_column,
-                                                                column_names=column_names)
+        X_train, y_train, X_valid, y_valid = get_custom_dataset(
+                dataset,
+                target_column=target_column,
+                column_names=column_names
+        )
     else:
-        
         X_train, y_train, X_valid, y_valid = get_cancer_dataset()
 
     scaled_clip_values_cancer = (-1., 1.)
@@ -174,29 +333,12 @@ def test_3(
         X_valid = X_valid[:n_val_samples]
         y_valid = y_valid[:n_val_samples]
 
-    # SVC = Model(scaled_clip_values_cancer)
-    # SVC.train(X_train_cancer, y_train_cancer)
-
     log_regression_clf_cancer = LogisticRegression()
     log_regression_clf_cancer.fit(X_train.values, y_train)
-
-    
-    # y_pred = log_regression_clf_cancer.predict(X_valid_0)
-    # print(f'Accuracy class: [0]: {accuracy_score(y_valid_0, y_pred):.4f}')
-
-    # y_pred = log_regression_clf_cancer.predict(X_valid_1)
-    # print(f'Accuracy class: [1]: {accuracy_score(y_valid_1, y_pred):.4f}')
-    # exit()
-    # print(f'F1-Score: {f1_score(y_valid, y_pred):.4f}')
-    # print(f'Confusion Matrix: {confusion_matrix(y_valid, y_pred)}')
-    # exit()    
 
     if success_on_class:
         X_valid = X_valid[y_valid == success_on_class].reset_index(drop=True)
         y_valid = y_valid[y_valid == success_on_class].reset_index(drop=True)
-
-    # print(y_valid.value_counts())
-
 
     # Wrapping classifier into appropriate ART-friendly wrapper
     logistic_regression_cancer_wrapper = ScikitlearnLogisticRegression(
@@ -226,128 +368,8 @@ def test_3(
 
     return success_rate
 
-def get_nn_model(input_dimensions, hidden_neurons, output_dimensions):
-    """
-    Prepare PyTorch (torch) neural network.
-    """
-    return torch.nn.Sequential(
-        nn.Linear(input_dimensions, hidden_neurons),
-        nn.ReLU(),
-        nn.Linear(hidden_neurons, output_dimensions),
-        nn.Softmax(dim=1)
-    )
-
-loss_fn = torch.nn.MSELoss(reduction='sum')
-
-def train_nn(nn_model, X, y, learning_rate, epochs):
-    """
-    Train provided neural network.
-    """
-    optimizer = optim.SGD(nn_model.parameters(), lr=learning_rate)
-
-    for _ in range(epochs):
-        y_pred = nn_model.forward(X)
-        loss = loss_fn(y_pred, y)
-        nn_model.zero_grad()
-        loss.backward()
-
-        optimizer.step()
-
-def lowprofool_generate_adversaries_test_nn(lowprofool, classifier, x_valid, y_valid):
-    """
-    Testing utility.
-    """
-    n_classes = lowprofool.n_classes
-
-    # Generate targets
-    target = np.eye(n_classes)[np.array(
-        y_valid.apply(
-            lambda x: np.random.choice([i for i in range(n_classes) if i != x]))
-    )]
-
-    # Generate adversaries
-    adversaries = lowprofool.generate(x=x_valid, y=target)
-
-    # Test - check the success rate
-    expected = np.argmax(target, axis=1)
-    x = Variable(torch.from_numpy(adversaries.astype(np.float32)))
-
-    out = classifier.forward(x).detach().numpy()
-    predicted = np.argmax(out, axis=1)
-    correct = (expected == predicted)
-
-    success_rate = np.sum(correct) / correct.shape[0]
-    print("Success rate: {:.2f}%".format(100*success_rate))
-
-    return adversaries
-
-def test_5():
-    print("---------- Test 5 ----------")
-
-    X_train_cancer, y_train_cancer, X_valid_cancer, y_valid_cancer = get_cancer_dataset()
-
-    scaled_clip_values_cancer = (-1., 1.)
-
-    X = Variable(torch.FloatTensor(np.array(X_train_cancer.values)))
-    y = Variable(torch.FloatTensor(np.eye(2)[y_train_cancer]))
-    nn_model_cancer = get_nn_model(30, 50, 2)
-    train_nn(nn_model_cancer, X, y, 1e-4, 1000)
-
-    print("le")
-
-    # Wrapping classifier into appropriate ART-friendly wrapper
-    # (in this case it is PyTorch NN classifier wrapper from ART)
-    neural_network_cancer_wrapper = PyTorchClassifier(
-        model       = nn_model_cancer,
-        loss        = loss_fn,
-        input_shape = (30,),
-        nb_classes  = 2,
-        clip_values = scaled_clip_values_cancer,
-        device_type = "cpu"
-    )
-
-    # Creating LowProFool instance
-    lpf_neural_network_cancer = LowProFool(
-        classifier = neural_network_cancer_wrapper,
-        n_steps    = 200,
-        eta        = 10,
-        lambd      = 2,
-        eta_decay  = 0.99
-    )
-
-    # Fitting feature importance
-    lpf_neural_network_cancer.fit_importances(X_train_cancer, y_train_cancer)
-
-    # Testing
-    results_nn_bc = lowprofool_generate_adversaries_test_nn(
-        lowprofool = lpf_neural_network_cancer,
-        classifier = nn_model_cancer, 
-        x_valid    = X_valid_cancer, 
-        y_valid    = y_valid_cancer
-    )
-
-def write_to_csv(csv_file, config, success_rate):
-    config_dict = vars(config)
-    headers = sorted(config_dict.keys())
-    if os.path.isfile(csv_file):
-        with open(csv_file, 'r') as f:
-            reader = csv.reader(f)
-            write_headers = (sum([1 for _ in reader]) == 0)
-    else:
-        write_headers = True
-
-    with open(csv_file, 'a') as f:
-        writer = csv.writer(f)
-        if write_headers:
-            writer.writerow(headers+['success_rate'])
-        writer.writerow([config_dict[header] for header in headers] + [success_rate])
-
 def main(config):
-    # There are multiple tests
-        # 3. Logistic regression with cancer dataset
-        # 5. NN with cancer dataset
-
-    success_rate = test_3(
+    success_rate = create_model_and_attack(
         n_steps=config.n_steps,
         eta=config.eta,
         lambd=config.lambd,
@@ -362,7 +384,9 @@ def main(config):
     write_to_csv(config.csv_file, config, success_rate)
     print("Success rate: {:.2f}%".format(100*success_rate))
 
-    #test_5()
+# =====================================================================
+# Entry point and argparse
+# =====================================================================
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
