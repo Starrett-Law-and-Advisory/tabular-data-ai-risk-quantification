@@ -1,21 +1,24 @@
 import argparse
 import csv
 import os
+import warnings
 
-from art.estimators.classification.scikitlearn import ScikitlearnLogisticRegression
-from art.attacks.evasion import LowProFool
-
+import matplotlib.pyplot as plt
+from matplotlib.ticker import PercentFormatter
 import numpy as np
 import pandas as pd
-
-from sklearn import datasets
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.linear_model import LogisticRegression
-
 from imblearn.over_sampling import SMOTE
+from pyfair import FairModel, FairSimpleReport
+from sklearn import datasets
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm
 
-import warnings
+from art.attacks.evasion import LowProFool
+from art.estimators.classification.scikitlearn import \
+    ScikitlearnLogisticRegression
+
 warnings.filterwarnings(action='ignore')
 
 # =====================================================================
@@ -95,7 +98,10 @@ def get_train_and_valid(design_matrix, labels):
 # Helper utilities
 # =====================================================================
 
-def write_to_csv(csv_file, config, success_rate):
+def write_to_csv(csv_file, config, success_rate, output_dir='visualization'):
+    os.makedirs(output_dir, exist_ok=True)
+    csv_file = os.path.join(output_dir, csv_file)
+
     config_dict = vars(config)
     headers = sorted(config_dict.keys())
     if os.path.isfile(csv_file):
@@ -113,7 +119,7 @@ def write_to_csv(csv_file, config, success_rate):
                         + [success_rate])
 
 # =====================================================================
-# Reports
+# Reports and graphs
 # =====================================================================
 
 def generate_pyfair_report(
@@ -121,49 +127,50 @@ def generate_pyfair_report(
         lambd_range,
         eta_decay_range,
         dataset,
+        num_models,
         n_steps_range,
-        eta,
-        lambd,
-        eta_decay,
         n_train_samples,
         n_val_samples,
         column_names,
         target_column,
         success_on_class,
-        save_csv_file,
         display
     ):
-    n_models = config.num_models
     model_data = {}
 
     sample_fn = lambda r: np.round(np.random.uniform(r[0], r[1], 1)[0], 3)
-    for _ in range(n_models):
+    for _ in range(num_models):
         eta = sample_fn(eta_range)
         lambd = sample_fn(lambd_range)
         eta_decay = sample_fn(eta_decay_range)
 
-        success_scores, n_steps_list = generate_linechart(dataset,
-                                                          n_steps_range,
-                                                          eta,
-                                                          lambd,
-                                                          eta_decay,
-                                                          n_train_samples,
-                                                          n_val_samples,
-                                                          column_names,
-                                                          target_column,
-                                                          success_on_class,
-                                                          save_csv_file,
-                                                          display,
-                                                          plot=False)
-        model_name = f"eta: {eta} lambd: {lambd}, eta_decay: {eta_decay}"
+        success_scores, n_steps_list = plot_line_chart(dataset,
+                                                       n_steps_range,
+                                                       eta,
+                                                       lambd,
+                                                       eta_decay,
+                                                       n_train_samples,
+                                                       n_val_samples,
+                                                       column_names,
+                                                       target_column,
+                                                       success_on_class,
+                                                       display,
+                                                       plot=False)
+        model_name = f'eta: {eta} lambd: {lambd}, eta_decay: {eta_decay}'
         model_data[model_name] = (success_scores, n_steps_list)
 
     _generate_pyfair_report(model_data)
 
-def _generate_pyfair_report(models_data, n_simulations=10_000):
+def _generate_pyfair_report(
+        models_data,
+        n_simulations=10_000,
+        output_dir='visualization',
+    ):
+    os.makedirs(output_dir, exist_ok=True)
+
     models = []
     for name, data in models_data.items():
-        model = FairModel(f"{name}", n_simulations=n_simulations)
+        model = FairModel(f'{name}', n_simulations=n_simulations)
         model.input_data('Threat Event Frequency',
                          mean=np.mean(data[1]),
                          stdev=np.std(data[1]))
@@ -175,7 +182,7 @@ def _generate_pyfair_report(models_data, n_simulations=10_000):
         models.append(model)
 
     fsr = FairSimpleReport(models, currency_prefix='')
-    fsr.to_html('report.html')
+    fsr.to_html(os.path.join(output_dir, 'pyfair_report.html'))
 
 def plot_line_chart(
         dataset,
@@ -188,7 +195,6 @@ def plot_line_chart(
         column_names,
         target_column,
         success_on_class,
-        save_csv_file,
         display,
         plot=True
     ):
@@ -201,7 +207,7 @@ def plot_line_chart(
                                          n_steps_range[1]+1,
                                          100,
                                          np.uint8)
-        n_steps_list = np_steps_list.tolist()
+        n_steps_list = n_steps_list.tolist()
 
     for n_step in tqdm(n_steps_list):
         success_rate = create_model_and_attack(
@@ -216,8 +222,6 @@ def plot_line_chart(
             target_column=target_column,
             success_on_class=success_on_class
         )
-
-        write_to_csv(csv_file, config, success_rate)
         success_rates.append(success_rate)
 
     if plot:
@@ -264,6 +268,74 @@ def plot_graph(
     plt.plot(np.arange(n_steps_range[0], n_steps_range[1]+1), data)
     plt.axhline(mean, color='r', linestyle='dashed')
     plt.savefig(f'{output_dir}/{fig_title}.png')
+    if display:
+        plt.show()
+
+def plot_histogram(
+        dataset,
+        n_steps_range,
+        eta_range,
+        lambd_range,
+        eta_decay_range,
+        n_hist_samples,
+        n_train_samples,
+        n_val_samples,
+        column_names,
+        target_column,
+        success_on_class,
+        display
+    ):
+    # Sample
+    success_rates = []
+    sample_fn = lambda r: np.random.uniform(r[0], r[1], 1)[0]
+    for i in tqdm(range(n_hist_samples)):
+        eta = sample_fn(eta_range)
+        lambd = sample_fn(lambd_range)
+        eta_decay = sample_fn(eta_decay_range)
+        n_steps = sample_fn(n_steps_range)
+
+        success_rate = create_model_and_attack(
+            n_steps=int(n_steps),
+            eta=eta,
+            lambd=lambd,
+            eta_decay=eta_decay,
+            n_train_samples=n_train_samples,
+            n_val_samples=n_val_samples,
+            dataset=dataset,
+            column_names=column_names,
+            target_column=target_column,
+            success_on_class=success_on_class
+        )
+        success_rates.append(success_rate)
+
+    # Plot
+    _plot_histogram(
+            success_rates,
+            fig_title=f'fig-class-{success_on_class}',
+            display=display
+    )
+
+def _plot_histogram(
+        data,
+        x_label='success_rate (param p in Bernoulli)',
+        y_label='Percentage samples',
+        output_dir='visualization',
+        fig_title='histogram',
+        display=True
+    ):
+    os.makedirs(output_dir, exist_ok=True)
+
+    plt.title(fig_title)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+
+    weights = np.ones(len(data)) / len(data)
+
+    bins = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    plt.hist(data, bins=bins, weights=weights, edgecolor='black')
+    plt.gca().yaxis.set_major_formatter(PercentFormatter(1))
+    plt.savefig(os.path.join(output_dir, f'{fig_title}.png'))
+
     if display:
         plt.show()
 
@@ -369,20 +441,68 @@ def create_model_and_attack(
     return success_rate
 
 def main(config):
-    success_rate = create_model_and_attack(
-        n_steps=config.n_steps,
-        eta=config.eta,
-        lambd=config.lambd,
-        eta_decay=config.eta_decay,
-        n_train_samples=config.n_train_samples,
-        n_val_samples=config.n_val_samples,
-        dataset=config.dataset,
-        column_names=config.column_names,
-        target_column=config.target_column,
-        success_on_class=config.success_on_class
-    )
-    write_to_csv(config.csv_file, config, success_rate)
-    print("Success rate: {:.2f}%".format(100*success_rate))
+    if config.mode == 'test':
+        success_rate = create_model_and_attack(
+            n_steps=config.n_steps,
+            eta=config.eta,
+            lambd=config.lambd,
+            eta_decay=config.eta_decay,
+            n_train_samples=config.n_train_samples,
+            n_val_samples=config.n_val_samples,
+            dataset=config.dataset,
+            column_names=config.column_names,
+            target_column=config.target_column,
+            success_on_class=config.success_on_class
+        )
+        write_to_csv(config.save_csv_file, config, success_rate)
+        print("Success rate: {:.2f}%".format(100*success_rate))
+
+    elif config.mode == 'report_pyfair':
+        generate_pyfair_report(
+                config.eta_range,
+                config.lambd_range,
+                config.eta_decay_range,
+                config.dataset,
+                config.num_models,
+                config.n_steps_range,
+                config.n_train_samples,
+                config.n_val_samples,
+                config.column_names,
+                config.target_column,
+                config.success_on_class,
+                config.display
+        )
+
+    elif config.mode == 'report_line':
+        plot_line_chart(
+                config.dataset,
+                config.n_steps_range,
+                config.eta,
+                config.lambd,
+                config.eta_decay,
+                config.n_train_samples,
+                config.n_val_samples,
+                config.column_names,
+                config.target_column,
+                config.success_on_class,
+                config.display
+        )
+
+    elif config.mode == 'report_hist':
+        plot_histogram(
+                config.dataset,
+                config.n_steps_range,
+                config.eta_range,
+                config.lambd_range,
+                config.eta_decay_range,
+                config.n_hist_samples,
+                config.n_train_samples,
+                config.n_val_samples,
+                config.column_names,
+                config.target_column,
+                config.success_on_class,
+                config.display
+        )
 
 # =====================================================================
 # Entry point and argparse
@@ -390,7 +510,8 @@ def main(config):
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-cf', '--csv-file', default='results.csv')
+    parser.add_argument('-m', '--mode', default='test', type=str, choices=['test', 'report_line', 'report_hist', 'report_pyfair'])
+    parser.add_argument('-cf', '--save_csv_file', default='results.csv')
     parser.add_argument('-nts', '--n_train_samples', type=int)
     parser.add_argument('-nvs', '--n_val_samples', type=int)
     parser.add_argument('-ns', '--n_steps', default=100, type=int)
@@ -401,5 +522,16 @@ if __name__=="__main__":
     parser.add_argument('-cn', '--column_names', nargs='+', default=None)
     parser.add_argument('-tc', '--target_column', type=str)
     parser.add_argument('-soc', '--success_on_class', type=int)
+    # -----------------------------------------------------------------
+    # Generating reports
+    # -----------------------------------------------------------------
+    parser.add_argument('-er', '--eta_range', nargs=2, default=[0.2, 0.5], type=float)
+    parser.add_argument('-lr', '--lambd_range', nargs=2, default=[0.2, 0.5], type=float)
+    parser.add_argument('-edr', '--eta_decay_range',  nargs=2, default=[0.5, 0.9], type=float)
+    parser.add_argument('-nsr', '--n_steps_range', nargs=2, default=[1, 10], type=int)
+    parser.add_argument('-nhs', '--n_hist_samples', default=1000, type=int)
+    parser.add_argument('-nm', '--num_models', default=1, type=int)
+    parser.add_argument('-di', '--display', action='store_true')
+
     args = parser.parse_args()
     main(args)
