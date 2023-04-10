@@ -512,9 +512,12 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode', default='test', type=str, choices=['test', 'report_line', 'report_hist', 'report_pyfair'])
     parser.add_argument('-cf', '--save_csv_file', default='results.csv')
-    parser.add_argument('-nts', '--n_train_samples', type=int)
-    parser.add_argument('-nvs', '--n_val_samples', type=int)
-    parser.add_argument('-ns', '--n_steps', default=100, type=int)
+    parser.add_argument('-nts', '--n_train_samples', type=int,
+                        help='Number of samples used for training purposes')
+    parser.add_argument('-nvs', '--n_val_samples', type=int,
+                        help='Number of samples used for validation purposes')
+    parser.add_argument('-ns', '--n_steps', default=100, type=int,
+                        help='Number of iterations to follow')
     parser.add_argument('-e', '--eta', default=0.2, type=float)
     parser.add_argument('-l', '--lambd', default=0.2, type=float)
     parser.add_argument('-ed', '--eta_decay', default=0.9, type=float)
