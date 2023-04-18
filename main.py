@@ -420,14 +420,14 @@ def create_model_and_attack(
 
     # Creating LowProFool instance
     """
-    eta: 
+    eta:
     Determines the magnitude of the changes made to the original input to
     create the adversarial example, a larger eta value will result in a
     larger perturbation, which can lead to a higher fooling rate, but may
     also make the perturbation more noticeable and increase the likelihood
     of detection and vice versa.
-    
-    eta_decay: 
+
+    eta_decay:
     Used to gradually reduce the eta. This can be useful for improving the
     convergence of the algorithm and avoiding overshooting. The eta decay 
     parameter determines how quickly the step size is reduced over time. A
