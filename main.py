@@ -419,6 +419,34 @@ def create_model_and_attack(
     )
 
     # Creating LowProFool instance
+    """
+    eta: 
+    Determines the magnitude of the changes made to the original input to
+    create the adversarial example, a larger eta value will result in a
+    larger perturbation, which can lead to a higher fooling rate, but may
+    also make the perturbation more noticeable and increase the likelihood
+    of detection and vice versa.
+    
+    eta_decay: 
+    Used to gradually reduce the eta. This can be useful for improving the
+    convergence of the algorithm and avoiding overshooting. The eta decay 
+    parameter determines how quickly the step size is reduced over time. A
+    higher eta decay value will lead to a slower reduction of the step size,
+    while a lower value will lead to a faster reduction. Typically, eta decay
+    values are set between 0.9 and 1.0, with larger values corresponding to
+    slower decay rates.
+
+    lambd:
+    Regularization parameter used to control the trade-off between the size of
+    the perturbation and the prediction error of the model. It determines the
+    importance of minimizing the distance (change) between the original input 
+    and the adversarial input, versus maximizing the prediction error of the
+    model on the adversarial input. A larger lambda value will prioritize 
+    minimizing the distance, which can lead to a smaller perturbation but 
+    potentially lower fooling rate. On the other hand, a smaller lambda value
+    will prioritize maximizing the prediction error, which can lead to a higher
+    fooling rate but potentially larger perturbations.
+    """
     lpf_logistic_regression_cancer = LowProFool(
         n_steps    = n_steps,
         classifier = logistic_regression_cancer_wrapper,
@@ -512,9 +540,12 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode', default='test', type=str, choices=['test', 'report_line', 'report_hist', 'report_pyfair'])
     parser.add_argument('-cf', '--save_csv_file', default='results.csv')
-    parser.add_argument('-nts', '--n_train_samples', type=int)
-    parser.add_argument('-nvs', '--n_val_samples', type=int)
-    parser.add_argument('-ns', '--n_steps', default=100, type=int)
+    parser.add_argument('-nts', '--n_train_samples', type=int,
+                        help='Number of samples used for training purposes')
+    parser.add_argument('-nvs', '--n_val_samples', type=int,
+                        help='Number of samples used for validation purposes')
+    parser.add_argument('-ns', '--n_steps', default=100, type=int,
+                        help='Number of iterations to follow')
     parser.add_argument('-e', '--eta', default=0.2, type=float)
     parser.add_argument('-l', '--lambd', default=0.2, type=float)
     parser.add_argument('-ed', '--eta_decay', default=0.9, type=float)
