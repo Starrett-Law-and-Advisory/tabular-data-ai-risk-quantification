@@ -119,3 +119,5 @@ demo/pics/*
 # other
 visualization/*
 data
+
+!quick_start.ipynb
