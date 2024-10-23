@@ -40,6 +40,11 @@ git clone https://github.com/axcelerateai/adversarial-robustness-toolbox
 cd adversarial-robustness-toolbox
 ```
 
+2. clone the official art repo
+
+```bash
+git clone https://github.com/Trusted-AI/adversarial-robustness-toolbox
+```
 2. Install requirements
 
 ```bash
