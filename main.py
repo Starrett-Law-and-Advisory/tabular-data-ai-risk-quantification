@@ -15,6 +15,10 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
+# Add the official ART repo in path
+import sys
+sys.path.append(os.path.abspath('adversarial-robustness-toolbox'))
+
 from art.attacks.evasion import LowProFool
 from art.estimators.classification.scikitlearn import \
     ScikitlearnLogisticRegression
