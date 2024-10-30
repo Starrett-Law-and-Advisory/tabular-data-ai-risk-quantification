@@ -5,28 +5,29 @@
 1. Clone the repo
 
 ```bash
-git clone https://github.com/axcelerateai/adversarial-robustness-toolbox
-cd adversarial-robustness-toolbox
+git clone https://github.com/Starrett-Law-and-Advisory/tabular-data-ai-risk-quantification
+cd tabular-data-ai-risk-quantification
 ```
 
-2. clone the official art repo
+2. Clone the official ART repo
 
 ```bash
 git clone https://github.com/Trusted-AI/adversarial-robustness-toolbox
 ```
-2. Install requirements
+
+3. Install requirements
 
 ```bash
 pip install -r requirements_test.txt
 ```
 
-3. Run main.py
+4. Run main.py. You can get a list of accepted arguments by running
 
 ```bash
 python main.py --help
 ```
 
-- Pass the required arguments and run the project.
+Pass the required arguments and run the project.
 
 
-4. Or you can simply run [quick_start.ipynb](quick_start.ipynb)
+4. Or you can simply using the [quick start notebook](quick_start.ipynb).
